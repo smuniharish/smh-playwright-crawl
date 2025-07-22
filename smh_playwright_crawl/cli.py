@@ -1,7 +1,14 @@
 import argparse
 import json
 from .crawler import Seed, crawl
+import logging
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()],
+)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -28,6 +35,8 @@ def main():
     parser.add_argument("--output", type=str,
                         default="crawl_results.json", help="Output file")
     args = parser.parse_args()
+    
+    logger.info(f"Starting crawl with seed URL: {args.url}")
 
     import asyncio
     seed = Seed(
@@ -41,7 +50,7 @@ def main():
 
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
-    print(f"Wrote {len(results)} pages to {args.output}")
+    logger.info(f"Wrote {len(results)} pages to {args.output}")
 
 
 if __name__ == "__main__":

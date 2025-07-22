@@ -3,17 +3,16 @@ import re
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, List, Dict, Set, TypedDict
+from typing import Any, AsyncIterator, List, Dict, Set
 from urllib.parse import urljoin, urlparse
 
-import tldextract
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 from playwright.async_api import async_playwright, Browser, Page
 
 from .utils import is_valid_link, count_tokens, word_counter, extract_domain
+from .config.playwright_config import set_playwright_event_loop_if_needed
 
-logger = logging.getLogger("smh-playwright-crawl")
+logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -127,6 +126,7 @@ class Seed:
 
 
 async def crawl(seed: Seed) -> List[Dict[str, Any]]:
+    set_playwright_event_loop_if_needed()
     visited: Set[str] = set()
     visited_lock = asyncio.Lock()
     results: List[Dict] = []
