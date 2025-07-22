@@ -19,6 +19,8 @@ def set_playwright_event_loop_if_needed():
     - Running on Windows
     - Python version is < 3.12
     - Policy has not already been set
+
+    Playwright on Windows requires this policy for compatibility on Python versions before 3.12.
     """
     global _policy_set
 
@@ -30,7 +32,15 @@ def set_playwright_event_loop_if_needed():
         with _set_policy_once:
             if not _policy_set:
                 current_policy = asyncio.get_event_loop_policy()
-                if not isinstance(current_policy, asyncio.WindowsSelectorEventLoopPolicy):
-                    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+                # Import here to prevent AttributeError on non-Windows platforms
+                try:
+                    WindowsSelectorEventLoopPolicy = asyncio.WindowsSelectorEventLoopPolicy
+                except AttributeError:
+                    WindowsSelectorEventLoopPolicy = None
+
+                if WindowsSelectorEventLoopPolicy is not None and not isinstance(current_policy, WindowsSelectorEventLoopPolicy):
+                    asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
                     logger.info("WindowsSelectorEventLoopPolicy set for Playwright on Python < 3.12")
+                else:
+                    logger.debug("WindowsSelectorEventLoopPolicy already set or unavailable.")
                 _policy_set = True
