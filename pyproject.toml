@@ -1,6 +1,6 @@
 [project]
 name="smh-playwright-crawl"
-version="0.1.1"
+version="0.1.2"
 description="An async, Playwright-powered web crawler for crawling and scraping web pages with enhanced dedup and filtering."
 authors=[{name = "S MUNI HARISH", email="samamuniharish@gmail.com"}]
 dependencies=[

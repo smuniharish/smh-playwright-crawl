@@ -3,7 +3,7 @@ import re
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, List, Dict, Set
+from typing import Any, AsyncIterator, List, Dict, Set, TypedDict
 from urllib.parse import urljoin, urlparse
 
 import tldextract
@@ -20,8 +20,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
+
 @asynccontextmanager
-async def browser_context_manager(headless:bool=True) -> AsyncIterator[Browser]:
+async def browser_context_manager(headless: bool = True) -> AsyncIterator[Browser]:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless, args=["--disable-dns-prefetch"])
         try:
@@ -29,19 +30,23 @@ async def browser_context_manager(headless:bool=True) -> AsyncIterator[Browser]:
         finally:
             await browser.close()
 
+
 @dataclass
 class CrawlItem:
     url: str
     depth: int
 
-async def fetch_page(page: Page, url: str,request_timeout:int) -> str:
-    skip_exts = {"pdf","jpg","jpeg","png","gif","svg","doc","docx","xls","xlsx","zip","rar","tar","gz"}
+
+async def fetch_page(page: Page, url: str, request_timeout: int) -> str:
+    skip_exts = {"pdf", "jpg", "jpeg", "png", "gif", "svg",
+                 "doc", "docx", "xls", "xlsx", "zip", "rar", "tar", "gz"}
     ext = urlparse(url).path.lower().split(".")[-1]
     if ext in skip_exts:
         logger.info(f"Skipping non-HTML resource: {url}")
         return ""
     await page.goto(url, timeout=request_timeout, wait_until="domcontentloaded")
     return await page.content()
+
 
 async def parse_links(html: str, base_url: str) -> List[Dict[str, str]]:
     soup = BeautifulSoup(html, "html.parser")
@@ -64,10 +69,11 @@ async def parse_links(html: str, base_url: str) -> List[Dict[str, str]]:
         )
     return links
 
-async def visit_url(context, item: CrawlItem, base_domain: str,request_timeout:int) -> Any:
+
+async def visit_url(context, item: CrawlItem, base_domain: str, request_timeout: int) -> Any:
     page = await context.new_page()
     try:
-        html = await fetch_page(page, item.url,request_timeout)
+        html = await fetch_page(page, item.url, request_timeout)
         if not html:
             return None, []
         soup = BeautifulSoup(html, "html.parser")
@@ -79,7 +85,8 @@ async def visit_url(context, item: CrawlItem, base_domain: str,request_timeout:i
             if description_tag and "content" in description_tag.attrs
             else ""
         )
-        headings = [h.get_text(strip=True) for h in soup.find_all(re.compile("^h[1-3]$"))]
+        headings = [h.get_text(strip=True)
+                    for h in soup.find_all(re.compile("^h[1-3]$"))]
         links = await parse_links(html, item.url)
         domain = extract_domain(item.url)
         tokens = count_tokens(text)
@@ -109,28 +116,39 @@ async def visit_url(context, item: CrawlItem, base_domain: str,request_timeout:i
     finally:
         await page.close()
 
-async def crawl(seed: str, max_depth: int=2,headless:bool=True,request_timeout:int=30000,max_tabs:int=15) -> List[Dict[str, Any]]:
+
+@dataclass
+class Seed:
+    url: str
+    max_depth: int = 2
+    headless: bool = True
+    request_timeout: int = 30000
+    max_tabs: int = 15
+
+
+async def crawl(seed: Seed) -> List[Dict[str, Any]]:
     visited: Set[str] = set()
     visited_lock = asyncio.Lock()
     results: List[Dict] = []
     queue: List[CrawlItem] = [CrawlItem(seed, 0)]
     base_domain = extract_domain(seed)
-    async with browser_context_manager(headless=headless) as browser:
+    async with browser_context_manager(headless=seed.headless) as browser:
         context = await browser.new_context()
         while queue:
             depth = queue[0].depth
             this_wave = [item for item in queue if item.depth == depth]
             queue = [item for item in queue if item.depth != depth]
-            batches = [this_wave[i:i + max_tabs] for i in range(0, len(this_wave), max_tabs)]
+            batches = [this_wave[i:i + seed.max_tabs]
+                       for i in range(0, len(this_wave), seed.max_tabs)]
             for batch in batches:
                 # ATOMIC visited marking: no URL will be crawled twice, even with races
                 async with visited_lock:
                     for item in batch:
                         visited.add(item.url)
                 tasks = [
-                    visit_url(context, item, base_domain,request_timeout)
+                    visit_url(context, item, base_domain, seed.request_timeout)
                     for item in batch
-                    if is_valid_link(item.url) and item.depth <= max_depth
+                    if is_valid_link(item.url) and item.depth <= seed.max_depth
                 ]
                 results_and_new = await asyncio.gather(*tasks)
                 for res, new_items in results_and_new:
@@ -147,3 +165,9 @@ async def crawl(seed: str, max_depth: int=2,headless:bool=True,request_timeout:i
                                 queue.append(new_item)
         await context.close()
     return results
+
+
+async def crawl_multiple(seeds: List[Seed]) -> List[Dict[str, Any]]:
+    tasks = [asyncio.create_task(crawl(seed)) for seed in seeds]
+    all_results = [r for res in await asyncio.gather(*tasks) for r in res]
+    return all_results
