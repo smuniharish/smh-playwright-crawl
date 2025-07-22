@@ -130,8 +130,8 @@ async def crawl(seed: Seed) -> List[Dict[str, Any]]:
     visited: Set[str] = set()
     visited_lock = asyncio.Lock()
     results: List[Dict] = []
-    queue: List[CrawlItem] = [CrawlItem(seed, 0)]
-    base_domain = extract_domain(seed)
+    queue: List[CrawlItem] = [CrawlItem(seed.url, 0)]
+    base_domain = extract_domain(seed.url)
     async with browser_context_manager(headless=seed.headless) as browser:
         context = await browser.new_context()
         while queue:
