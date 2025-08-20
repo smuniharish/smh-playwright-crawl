@@ -31,7 +31,6 @@ playwright install
 
 ```bash
 smh-playwright-crawl "https://example.com"
---max-depth 2
 --headless # (default: True, runs headless)
 --no-headless # (show browser window)
 --request-timeout 30000
@@ -42,7 +41,7 @@ smh-playwright-crawl "https://example.com"
 **Example:**
 
 ```bash
-smh-playwright-crawl "https://integramicro.com/" --max-depth 2 --no-headless --output site.json
+smh-playwright-crawl "https://integramicro.com/" --no-headless --output site.json
 ```
 
 ### CLI Options
@@ -50,7 +49,6 @@ smh-playwright-crawl "https://integramicro.com/" --max-depth 2 --no-headless --o
 | Argument            | Default             | Description                           |
 | ------------------- | ------------------- | ------------------------------------- |
 | `url`               | (required)          | Seed/start URL                        |
-| `--max-depth`       | 2                   | Recursion/crawl depth                 |
 | `--headless`        | True                | Run browser headless (default)        |
 | `--no-headless`     |                     | Show browser window                   |
 | `--request-timeout` | 30000               | Timeout per page load in milliseconds |
@@ -67,7 +65,6 @@ import asyncio
 
 results = asyncio.run(crawl(
     "https://example.com",
-    max_depth=2,
     headless=True, # set False to see browser
     request_timeout=30000,
     max_tabs=8

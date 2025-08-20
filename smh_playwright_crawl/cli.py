@@ -14,8 +14,6 @@ def main():
     parser = argparse.ArgumentParser(
         description="Async Playwright web crawler")
     parser.add_argument("url", help="Starting URL to crawl")
-    parser.add_argument("--max-depth", type=int,
-                        default=2, help="Recursion depth")
     parser.add_argument("--request-timeout", type=int, default=30000,
                         help="Request timeout in milliseconds (default: 30000)")
     parser.add_argument("--max-tabs", type=int, default=15,
@@ -41,7 +39,6 @@ def main():
     import asyncio
     seed = Seed(
         url=args.url,
-        max_depth=args.max_depth,
         headless=args.headless,
         request_timeout=args.request_timeout,
         max_tabs=args.max_tabs

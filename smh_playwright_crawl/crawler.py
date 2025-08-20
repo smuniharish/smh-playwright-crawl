@@ -33,7 +33,6 @@ async def browser_context_manager(headless: bool = True) -> AsyncIterator[Browse
 @dataclass
 class CrawlItem:
     url: str
-    depth: int
 
 
 async def fetch_page(page: Page, url: str, request_timeout: int) -> str:
@@ -55,17 +54,13 @@ async def parse_links(html: str, base_url: str) -> List[Dict[str, str]]:
         if not is_valid_link(raw_href):
             continue
         resolved = urljoin(base_url, raw_href)
-        if not is_valid_link(resolved):
-            continue
         parsed = urlparse(resolved)
         if parsed.scheme not in ("http", "https"):
             continue
         url_wo_frag = resolved.split('#')[0]
-        if not is_valid_link(url_wo_frag):  # defensively handle
+        if not is_valid_link(url_wo_frag):
             continue
-        links.append(
-            {"text": a.get_text(strip=True), "url": url_wo_frag}
-        )
+        links.append({"text": a.get_text(strip=True), "url": url_wo_frag})
     return links
 
 
@@ -84,8 +79,7 @@ async def visit_url(context, item: CrawlItem, base_domain: str, request_timeout:
             if description_tag and "content" in description_tag.attrs
             else ""
         )
-        headings = [h.get_text(strip=True)
-                    for h in soup.find_all(re.compile("^h[1-3]$"))]
+        headings = [h.get_text(strip=True) for h in soup.find_all(re.compile("^h[1-3]$"))]
         links = await parse_links(html, item.url)
         domain = extract_domain(item.url)
         tokens = count_tokens(text)
@@ -102,12 +96,9 @@ async def visit_url(context, item: CrawlItem, base_domain: str, request_timeout:
             "word_count": word_count,
             "raw_text": text
         }
-        new_link_urls = [
-            link["url"] for link in links
-            if is_valid_link(link["url"])
-            and extract_domain(link["url"]) == base_domain
-        ]
-        new_items = [CrawlItem(url, item.depth + 1) for url in new_link_urls]
+        # Only keep links from the same domain that have not been visited yet
+        new_link_urls = [link["url"] for link in links if extract_domain(link["url"]) == base_domain]
+        new_items = [CrawlItem(url) for url in new_link_urls]
         return result, new_items
     except Exception as e:
         logger.warning(f"Failed to fetch {item.url}: {e}")
@@ -119,7 +110,6 @@ async def visit_url(context, item: CrawlItem, base_domain: str, request_timeout:
 @dataclass
 class Seed:
     url: str
-    max_depth: int = 2
     headless: bool = True
     request_timeout: int = 30000
     max_tabs: int = 15
@@ -130,39 +120,28 @@ async def crawl(seed: Seed) -> List[Dict[str, Any]]:
     visited: Set[str] = set()
     visited_lock = asyncio.Lock()
     results: List[Dict] = []
-    queue: List[CrawlItem] = [CrawlItem(seed.url, 0)]
+    queue: List[CrawlItem] = [CrawlItem(seed.url)]
     base_domain = extract_domain(seed.url)
+
     async with browser_context_manager(headless=seed.headless) as browser:
         context = await browser.new_context()
         while queue:
-            depth = queue[0].depth
-            this_wave = [item for item in queue if item.depth == depth]
-            queue = [item for item in queue if item.depth != depth]
-            batches = [this_wave[i:i + seed.max_tabs]
-                       for i in range(0, len(this_wave), seed.max_tabs)]
-            for batch in batches:
-                # ATOMIC visited marking: no URL will be crawled twice, even with races
-                async with visited_lock:
-                    for item in batch:
-                        visited.add(item.url)
-                tasks = [
-                    visit_url(context, item, base_domain, seed.request_timeout)
-                    for item in batch
-                    if is_valid_link(item.url) and item.depth <= seed.max_depth
-                ]
-                results_and_new = await asyncio.gather(*tasks)
-                for res, new_items in results_and_new:
-                    if res:
-                        results.append(res)
-                    # Only queue new links (never revisited and valid), ATOMIC!
-                    for new_item in new_items:
-                        async with visited_lock:
-                            if (
-                                is_valid_link(new_item.url)
-                                and new_item.url not in visited
-                            ):
-                                visited.add(new_item.url)
-                                queue.append(new_item)
+            # Pop a batch of URLs
+            batch, queue = queue[:seed.max_tabs], queue[seed.max_tabs:]
+            async with visited_lock:
+                for item in batch:
+                    visited.add(item.url)
+
+            tasks = [visit_url(context, item, base_domain, seed.request_timeout) for item in batch]
+            results_and_new = await asyncio.gather(*tasks)
+            for res, new_items in results_and_new:
+                if res:
+                    results.append(res)
+                for new_item in new_items:
+                    async with visited_lock:
+                        if new_item.url not in visited:
+                            visited.add(new_item.url)
+                            queue.append(new_item)
         await context.close()
     return results
 
