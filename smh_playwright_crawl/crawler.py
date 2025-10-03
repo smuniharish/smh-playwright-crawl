@@ -8,6 +8,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Browser, Page
+import base64
 
 from .utils import is_valid_link, count_tokens, word_counter, extract_domain
 from .config.playwright_config import set_playwright_event_loop_if_needed
@@ -63,6 +64,20 @@ async def parse_links(html: str, base_url: str) -> List[Dict[str, str]]:
         links.append({"text": a.get_text(strip=True), "url": url_wo_frag})
     return links
 
+def encode_to_base64(data):
+    return base64.b64encode(data).decode("utf-8")
+
+async def capture_screenshots(page,url):
+    screenshots = []
+    try:
+        full_page_screenshot_task = page.screenshot(full_page=True)
+        view_port_screenshot_task = page.screenshot(full_page=False)
+        full_screenshot,viewport_screenshot =await asyncio.gather(full_page_screenshot_task,view_port_screenshot_task)
+        screenshots.append(encode_to_base64(full_screenshot))
+        screenshots.append(encode_to_base64(viewport_screenshot))
+    except Exception as ss_err:
+        logger.warning(f"Screenshot failed for {url}: {ss_err}")
+    return screenshots
 
 async def visit_url(context, item: CrawlItem, base_domain: str, request_timeout: int) -> Any:
     page = await context.new_page()
@@ -84,6 +99,7 @@ async def visit_url(context, item: CrawlItem, base_domain: str, request_timeout:
         domain = extract_domain(item.url)
         tokens = count_tokens(text)
         word_count = word_counter(text)
+        screenshots = await capture_screenshots(page,item.url)
         result = {
             "url": item.url,
             "title": title,
@@ -94,7 +110,8 @@ async def visit_url(context, item: CrawlItem, base_domain: str, request_timeout:
             "domain": domain,
             "tokens": tokens,
             "word_count": word_count,
-            "raw_text": text
+            "raw_text": text,
+            "screenshots": screenshots
         }
         # Only keep links from the same domain that have not been visited yet
         new_link_urls = [link["url"] for link in links if extract_domain(link["url"]) == base_domain]
