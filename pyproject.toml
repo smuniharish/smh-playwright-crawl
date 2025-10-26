@@ -1,12 +1,13 @@
 [project]
 name = "smh-playwright-crawl"
-version = "0.1.10"
+version = "0.1.11"
 description = "An async, Playwright-powered web crawler for crawling and scraping web pages with enhanced dedup and filtering."
 authors = [{name = "S MUNI HARISH", email="samamuniharish@gmail.com"}]
 dependencies = [
     "playwright>=1.55.0",
     "beautifulsoup4>=4.14.2",
     "tldextract>=5.3.0",
+    "zstandard>=0.25.0",
 ]
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }

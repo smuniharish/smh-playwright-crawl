@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Browser, Page
 import base64
+import zstandard as zstd
 
 from .utils import is_valid_link, count_tokens, word_counter, extract_domain
 from .config.playwright_config import set_playwright_event_loop_if_needed
@@ -19,6 +20,22 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+def encode_to_base64(data):
+    return base64.b64encode(data).decode("utf-8")
+
+def zstd_compress_base64(data: bytes, level: int = 22) -> str:
+    """Compress bytes with Zstandard and return Base64 string."""
+    compressor = zstd.ZstdCompressor(level=level)
+    compressed = compressor.compress(data)
+    return encode_to_base64(compressed)
+
+# Decompression function is currently not used
+# def zstd_decompress_base64(b64_string: str) -> bytes:
+#     """Decompress Base64 string (Zstandard → bytes)."""
+#     compressed = base64.b64decode(b64_string)
+#     decompressor = zstd.ZstdDecompressor()
+#     return decompressor.decompress(compressed)
 
 
 @asynccontextmanager
@@ -64,17 +81,17 @@ async def parse_links(html: str, base_url: str) -> List[Dict[str, str]]:
         links.append({"text": a.get_text(strip=True), "url": url_wo_frag})
     return links
 
-def encode_to_base64(data):
-    return base64.b64encode(data).decode("utf-8")
-
 async def capture_screenshots(page,url):
     screenshots = []
     try:
         full_page_screenshot_task = page.screenshot(full_page=True)
         view_port_screenshot_task = page.screenshot(full_page=False)
         full_screenshot,viewport_screenshot =await asyncio.gather(full_page_screenshot_task,view_port_screenshot_task)
-        screenshots.append(encode_to_base64(full_screenshot))
-        screenshots.append(encode_to_base64(viewport_screenshot))
+        compress_full = asyncio.to_thread(zstd_compress_base64, full_screenshot)
+        compress_view = asyncio.to_thread(zstd_compress_base64, viewport_screenshot)
+        full_encoded, view_encoded = await asyncio.gather(compress_full, compress_view)
+        screenshots.append(full_encoded)
+        screenshots.append(view_encoded)
     except Exception as ss_err:
         logger.warning(f"Screenshot failed for {url}: {ss_err}")
     return screenshots
